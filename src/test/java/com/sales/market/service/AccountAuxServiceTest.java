@@ -7,9 +7,11 @@ import org.springframework.boot.test.context.SpringBootTest;
 
 import java.math.BigDecimal;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertThrows;
 
 
 @SpringBootTest
@@ -20,26 +22,31 @@ class AccountAuxServiceTest {
 
     @Test
     public void givenBalance100WhenDebit100TwiceShouldFail() {
-        AccountAux accountAux = new AccountAux();
-        accountAux.setTotalCredit(new BigDecimal("100"));
-        accountAux.setTotalDebit(new BigDecimal("0"));
-        accountAux.setBalance(new BigDecimal("100"));
 
-        AccountAux finalAccountAux = accountAuxService.save(accountAux);
-        System.out.println("Numero de registros " + accountAuxService.count());
+        assertThrows(ExecutionException.class, () -> {
+            AccountAux accountAux = new AccountAux();
+            accountAux.setTotalCredit(new BigDecimal("100"));
+            accountAux.setTotalDebit(new BigDecimal("0"));
+            accountAux.setBalance(new BigDecimal("100"));
+            accountAuxService.save(accountAux);
 
-        CompletableFuture<AccountAux> completableFutureFirstOperation =
-                CompletableFuture.supplyAsync(() -> accountAuxService.debit(finalAccountAux.getId(),
-                        new BigDecimal("100"))).orTimeout(60, TimeUnit.SECONDS);
+            CompletableFuture<AccountAux> completableFutureFirstOperation =
+                    CompletableFuture.supplyAsync(() -> accountAuxService.debit(accountAux.getId(),
+                            new BigDecimal("100"))).orTimeout(60, TimeUnit.SECONDS);
 
-        CompletableFuture<AccountAux> completableFutureSecondOperation =
-                CompletableFuture.supplyAsync(() -> accountAuxService.debit(finalAccountAux.getId(),
-                        new BigDecimal("100"))).orTimeout(60, TimeUnit.SECONDS);
+            CompletableFuture<AccountAux> completableFutureSecondOperation =
+                    CompletableFuture.supplyAsync(() -> accountAuxService.debit(accountAux.getId(),
+                            new BigDecimal("100"))).orTimeout(60, TimeUnit.SECONDS);
 
-        AccountAux accountAuxAfterOperations = accountAuxService.getById(finalAccountAux.getId());
+            AccountAux finalAccount = completableFutureFirstOperation.get();
+            AccountAux finalAccount2 = completableFutureSecondOperation.get();
 
-        System.out.println("id: " + accountAuxAfterOperations.getId() + ", balance: " + accountAuxAfterOperations.getBalance() + ", debit: "+ accountAuxAfterOperations.getTotalDebit() + ", credit: " + accountAuxAfterOperations.getTotalCredit());
-        assertEquals(accountAuxAfterOperations.getBalance().intValue(), 0);
+            AccountAux accountAuxAfterOperations = accountAuxService.getById(finalAccount2.getId());
+
+            System.out.println("id: " + accountAuxAfterOperations.getId() + ", balance: " + accountAuxAfterOperations.getBalance() + ", debit: "+ accountAuxAfterOperations.getTotalDebit() + ", credit: " + accountAuxAfterOperations.getTotalCredit());
+
+            assertEquals(accountAuxAfterOperations.getBalance(), 0);
+        });
     }
 
 }
